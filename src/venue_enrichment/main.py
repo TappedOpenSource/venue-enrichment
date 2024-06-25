@@ -13,22 +13,19 @@ telemetry.disable_telemetry()
 load_dotenv()
 
 gemini_key = os.environ["GOOGLE_API_KEY"]
-if gemini_key == None:
-    print({ "error": '''
-        To get started, get an GOOGLE_API_KEY and enter it in the first step
-    '''.replace('\n', '') })
+openai_key = os.environ["OPENAI_API_KEY"]
 
 graph_config = {
    "llm": {
-      "api_key": gemini_key,
-      "model": "gemini-pro",
+      "api_key": openai_key,
+      "model": "gpt-4-turbo",
    },
    "max_results": 10,
    # "verbose": True,
 }
 
-venue_name = "Zambino"
-location = "New York City"
+venue_name = "The Anthem"
+location = "Washington DC"
 prompt = f"tell me everything about the venue {venue_name} in {location}"
 
 class Venue(BaseModel):
@@ -54,9 +51,11 @@ def run_search_graph():
     )
 
     result = search_graph.run()
+
     graph_exec_info = search_graph.get_execution_info()
     print(prettify_exec_info(graph_exec_info))
 
+    # print(result)
     convert_to_json(result, "search_g.json")
 
 def run_omni_search_graph():
@@ -67,6 +66,7 @@ def run_omni_search_graph():
     )
 
     result = omni_search_graph.run()
+
     graph_exec_info = omni_search_graph.get_execution_info()
     print(prettify_exec_info(graph_exec_info))
 
