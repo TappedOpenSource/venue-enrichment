@@ -1,12 +1,13 @@
-
 import os
+import time
 from dotenv import load_dotenv
 from scrapegraphai import telemetry
-from scrapegraphai.utils import prettify_exec_info, convert_to_json
-from scrapegraphai.graphs import SearchGraph, OmniSearchGraph
+from scrapegraphai.utils import prettify_exec_info
+from scrapegraphai.graphs import SearchGraph
 from pydantic import BaseModel, Field
-from typing import List
 import nest_asyncio
+import json
+from openai import OpenAIError, RateLimitError
 
 nest_asyncio.apply()
 telemetry.disable_telemetry()
@@ -15,25 +16,31 @@ load_dotenv()
 gemini_key = os.environ["GOOGLE_API_KEY"]
 openai_key = os.environ["OPENAI_API_KEY"]
 
+completion_token_limit = 1500
+total_token_limit = 29900
+token_usage = 0
+max_retries = 3
+retry_count = 0
+backoff_factor = 2
+initial_wait_time = 10
+
 graph_config = {
-   "llm": {
-      "api_key": openai_key,
-      "model": "gpt-4-turbo",
-   },
-   "max_results": 10,
-   # "verbose": True,
+    "llm": {
+        "api_key": openai_key,
+        "model": "gpt-4-turbo",
+        "max_tokens": completion_token_limit,
+    },
+    "max_results": 5,
+    "headless": False,
 }
 
 venue_name = "The Anthem"
 location = "Washington DC"
-prompt = f"tell me everything about the venue {venue_name} in {location}"
+prompt = f"Tell me everything about the venue {venue_name} in {location}"
 
 class Venue(BaseModel):
     name: str = Field(description="the name of the venue")
     description: str = Field(description="a brief description of the venue")
-    # capacity: int = Field(description="the capacity of the venue")
-    # genres: List[str] = Field(description="the genres they normally book")
-    # address: str = Field(description="the address of the venue")
     email: str = Field(description="the email of the venue")
     phone: str = Field(description="the phone number of the venue")
     website: str = Field(description="the website of the venue")
@@ -44,34 +51,59 @@ class Venue(BaseModel):
     idealPerformerProfile: str = Field(description="what kind of musicians does the venue normally book")
 
 def run_search_graph():
-    search_graph = SearchGraph(
-        prompt=prompt,
-        config=graph_config,
-        schema=Venue
-    )
+    global token_usage, retry_count
 
-    result = search_graph.run()
+    start_time = time.time()
+    while retry_count < max_retries:
+        elapsed_time = time.time() - start_time
+        if elapsed_time > 60:
+            print("Exceeded maximum time of 60 seconds. Exiting.")
+            break
 
-    graph_exec_info = search_graph.get_execution_info()
-    print(prettify_exec_info(graph_exec_info))
+        try:
+            remaining_tokens = total_token_limit - token_usage
+            max_tokens = min(completion_token_limit, remaining_tokens)
+            graph_config["llm"]["max_tokens"] = max_tokens
 
-    # print(result)
-    convert_to_json(result, "search_g.json")
+            search_graph = SearchGraph(
+                prompt=prompt,
+                config=graph_config,
+                schema=Venue
+            )
 
-def run_omni_search_graph():
-    omni_search_graph = OmniSearchGraph(
-        prompt=prompt,
-        config=graph_config,
-        schema=Venue
-    )
+            result = search_graph.run()
+            print("Result:", result)
 
-    result = omni_search_graph.run()
+            token_usage += max_tokens
 
-    graph_exec_info = omni_search_graph.get_execution_info()
-    print(prettify_exec_info(graph_exec_info))
+            optimized_result = {
+                "name": result.get("name", ""),
+                "description": result.get("description", ""),
+                "email": result.get("email", ""),
+                "phone": result.get("phone", ""),
+                "website": result.get("website", ""),
+                "facebookUrl": result.get("facebookUrl", ""),
+                "twitterUrl": result.get("twitterUrl", ""),
+                "instagramUrl": result.get("instagramUrl", ""),
+                "logoUrl": result.get("logoUrl", ""),
+                "idealPerformerProfile": result.get("idealPerformerProfile", "")
+            }
 
-    convert_to_json(result, "omni.json")
+            graph_exec_info = search_graph.get_execution_info()
+            print(prettify_exec_info(graph_exec_info))
+
+            with open("search_g.json", "w") as outfile:
+                json.dump(optimized_result, outfile)
+
+            break
+        except RateLimitError as e:
+            retry_count += 1
+            wait_time = initial_wait_time * (backoff_factor ** retry_count)
+            print(f"Rate limit exceeded: {e}. Retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
+            token_usage = 0
+    else:
+        print("Max retries exceeded. Exiting.")
 
 if __name__ == "__main__":
     run_search_graph()
-    # run_omni_search_graph()
