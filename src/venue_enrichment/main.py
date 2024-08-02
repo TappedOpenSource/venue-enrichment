@@ -5,6 +5,7 @@ from scrapegraphai import telemetry
 from scrapegraphai.utils import prettify_exec_info
 from scrapegraphai.graphs import SearchGraph
 from pydantic import BaseModel, Field
+from typing import List
 import nest_asyncio
 import json
 from openai import OpenAIError, RateLimitError
@@ -17,7 +18,7 @@ gemini_key = os.environ["GOOGLE_API_KEY"]
 openai_key = os.environ["OPENAI_API_KEY"]
 
 completion_token_limit = 1500
-total_token_limit = 29900
+total_token_limit = 10900
 token_usage = 0
 max_retries = 3
 retry_count = 0
@@ -34,8 +35,8 @@ graph_config = {
     "headless": False,
 }
 
-venue_name = "The Anthem"
-location = "Washington DC"
+venue_name = "The Heights Theatre"
+location = "Houston, Texas"
 prompt = f"Tell me everything about the venue {venue_name} in {location}"
 
 class Venue(BaseModel):
@@ -45,6 +46,9 @@ class Venue(BaseModel):
     phone: str = Field(description="the phone number of the venue")
     website: str = Field(description="the website of the venue")
     facebookUrl: str = Field(description="the facebook page of the venue")
+    capacity: str = Field(description="the capacity of the venue")
+    genres: List[str] = Field(description="the genres they normally book")
+    address: str = Field(description="the address of the venue")
     twitterUrl: str = Field(description="the twitter url of the venue")
     instagramUrl: str = Field(description="the instagram url of the venue")
     logoUrl: str = Field(description="the url of the venue's logo or avatar")
@@ -102,6 +106,12 @@ def run_search_graph():
             print(f"Rate limit exceeded: {e}. Retrying in {wait_time} seconds...")
             time.sleep(wait_time)
             token_usage = 0
+        except OpenAIError as e:
+            print(f"An OpenAI error occurred: {e}")
+            break
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            break
     else:
         print("Max retries exceeded. Exiting.")
 
